@@ -1,0 +1,122 @@
+// Prisma schema — Multi-Tenant SaaS with tenant isolation
+// Production would use PostgreSQL (Neon/Supabase) on Cloudflare
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  prefix    String   @db.VarChar(2) // حرفين للتذكرة BS, LB, AR
+  phone     String
+  address   String
+  type      String
+  createdAt DateTime @default(now())
+
+  users     User[]
+  bookings  Booking[]
+  services  Service[]
+  staff     Staff[]
+  invoices  Invoice[]
+  customers Customer[]
+  settings  TenantSettings?
+}
+
+model TenantSettings {
+  id              String  @id @default(cuid())
+  tenantId        String  @unique
+  tenant          Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  telegramToken   String? // توكن تيليجرام الخاص بكل تاجر
+  telegramEnabled Boolean @default(true)
+  whatsappEnabled Boolean @default(true)
+  ticketPrefix    String  @db.VarChar(2)
+}
+
+model User {
+  id       String @id @default(cuid())
+  email    String @unique
+  password String // hashed
+  name     String
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role     String @default("owner")
+
+  @@index([tenantId])
+}
+
+model Booking {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  clientName   String
+  clientPhone  String
+  membershipId String   // رقم عضوية دائم M-xxxxx
+  ticket       String   // BS-xxxxx بحرفين من إعدادات التاجر
+  serviceId    String
+  staffId      String?
+  date         DateTime
+  time         String
+  status       String   // مؤكد / بانتظار / مكتمل / لم تحضر
+  amount       Int
+  createdAt    DateTime @default(now())
+
+  @@unique([tenantId, date, time, staffId]) // منع تضارب الحجز
+  @@index([tenantId])
+  @@index([membershipId])
+}
+
+model Service {
+  id        String @id @default(cuid())
+  tenantId  String
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  price     Int
+  duration  Int
+  icon      String
+  count     Int      @default(0)
+
+  @@index([tenantId])
+}
+
+model Staff {
+  id          String @id @default(cuid())
+  tenantId    String
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  role        String
+  rating      Float
+  utilization Int
+
+  @@index([tenantId])
+}
+
+model Invoice {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  number   String
+  client   String
+  amount   Int
+  status   String
+  method   String @default("حضوري")
+
+  @@index([tenantId])
+}
+
+model Customer {
+  id           String @id @default(cuid())
+  tenantId     String
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name         String
+  phone        String
+  membershipId String @unique // دائم
+  visits       Int    @default(1)
+  totalSpent   Int    @default(0)
+
+  @@index([tenantId])
+}
